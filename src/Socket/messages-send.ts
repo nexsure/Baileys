@@ -83,6 +83,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 		cachedGroupMetadata,
 		enableRecentMessageCache,
 		enablePnToLidAdaptiveAddressing,
+		shouldUsePnToLidAdaptiveAddressing,
 		maxMsgRetryCount
 	} = config
 	const sock = makeNewsletterSocket(config)
@@ -1347,7 +1348,9 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 						: disappearingMessagesInChat
 				await groupToggleEphemeral(jid, value)
 			} else {
-				const resolvedJid = enablePnToLidAdaptiveAddressing
+				const adaptiveAddressingEnabled =
+					shouldUsePnToLidAdaptiveAddressing?.() ?? enablePnToLidAdaptiveAddressing ?? false
+				const resolvedJid = adaptiveAddressingEnabled
 					? await resolveMessageSendJid(jid, getStoredLIDForPN, logger)
 					: { jid }
 				const fullMsg = await generateWAMessage(resolvedJid.jid, content, {

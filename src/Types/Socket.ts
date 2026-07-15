@@ -114,6 +114,8 @@ export type SocketConfig = {
 	 * alternate-addressing metadata. Disabled by default for staged rollout.
 	 */
 	enablePnToLidAdaptiveAddressing?: boolean
+	/** Optional per-send policy used by callers that need a runtime kill switch. */
+	shouldUsePnToLidAdaptiveAddressing?: () => boolean
 
 	/**
 	 * Returns if a jid should be ignored,
