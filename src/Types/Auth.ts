@@ -24,6 +24,19 @@ export type LIDMapping = {
 	lid: string
 }
 
+export type LIDMappingLifecycleEvent =
+	| {
+			action: 'REFRESHED' | 'MIGRATED'
+			mapping: LIDMapping
+			previousLid?: string
+	  }
+	| {
+			action: 'INVALIDATED'
+			mapping: LIDMapping
+	  }
+
+export type LIDMappingWriteSource = 'OBSERVED' | 'USYNC_REFRESH' | 'MIGRATION_SYNC'
+
 export type LTHashState = {
 	version: number
 	hash: Buffer

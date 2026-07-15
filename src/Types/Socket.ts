@@ -2,7 +2,13 @@ import type { Agent } from 'https'
 import type { URL } from 'url'
 import { proto } from '../../WAProto/index.js'
 import type { ILogger } from '../Utils/logger'
-import type { AuthenticationState, LIDMapping, SignalAuthState, TransactionCapabilityOptions } from './Auth'
+import type {
+	AuthenticationState,
+	LIDMapping,
+	LIDMappingLifecycleEvent,
+	SignalAuthState,
+	TransactionCapabilityOptions
+} from './Auth'
 import type { GroupMetadata } from './GroupMetadata'
 import { type MediaConnInfo, type WAMessageKey } from './Message'
 import type { SignalRepositoryWithLIDStore } from './Signal'
@@ -110,6 +116,14 @@ export type SocketConfig = {
 	enableRecentMessageCache: boolean
 
 	/**
+	 * Route one-to-one PN sends to a trusted locally stored LID while preserving PN
+	 * alternate-addressing metadata. Disabled by default for staged rollout.
+	 */
+	enablePnToLidAdaptiveAddressing?: boolean
+	/** Optional per-send policy used by callers that need a runtime kill switch. */
+	shouldUsePnToLidAdaptiveAddressing?: () => boolean
+
+	/**
 	 * Returns if a jid should be ignored,
 	 * no event for that jid will be triggered.
 	 * Messages from that jid will also not be decrypted
@@ -148,6 +162,7 @@ export type SocketConfig = {
 	makeSignalRepository: (
 		auth: SignalAuthState,
 		logger: ILogger,
-		pnToLIDFunc?: (jids: string[]) => Promise<LIDMapping[] | undefined>
+		pnToLIDFunc?: (jids: string[]) => Promise<LIDMapping[] | undefined>,
+		onLIDMappingLifecycle?: (event: LIDMappingLifecycleEvent) => void
 	) => SignalRepositoryWithLIDStore
 }

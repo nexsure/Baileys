@@ -384,7 +384,9 @@ export const makeSocket = (config: SocketConfig) => {
 	const { creds } = authState
 	// add transaction capability
 	const keys = addTransactionCapability(authState.keys, logger, transactionOpts)
-	const signalRepository = makeSignalRepository({ creds, keys }, logger, pnFromLIDUSync)
+	const signalRepository = makeSignalRepository({ creds, keys }, logger, pnFromLIDUSync, event => {
+		ev.emit('lid-mapping.lifecycle', event)
+	})
 
 	let lastDateRecv: Date
 	let epoch = 1
