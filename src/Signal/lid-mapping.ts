@@ -1,5 +1,10 @@
 import { LRUCache } from 'lru-cache'
-import type { LIDMapping, SignalKeyStoreWithTransaction } from '../Types'
+import type {
+	LIDMapping,
+	LIDMappingLifecycleEvent,
+	LIDMappingWriteSource,
+	SignalKeyStoreWithTransaction
+} from '../Types'
 import type { ILogger } from '../Utils/logger'
 import { isHostedPnUser, isLidUser, isPnUser, jidDecode, jidNormalizedUser, WAJIDDomains } from '../WABinary'
 
@@ -18,6 +23,7 @@ export class LIDMappingStore {
 	private readonly logger: ILogger
 
 	private pnToLIDFunc?: (jids: string[]) => Promise<LIDMapping[] | undefined>
+	private onLifecycle?: (event: LIDMappingLifecycleEvent) => void
 
 	private readonly inflightLIDLookups = new Map<string, Promise<LIDMapping[] | null>>()
 	private readonly inflightPNLookups = new Map<string, Promise<LIDMapping[] | null>>()
@@ -25,11 +31,13 @@ export class LIDMappingStore {
 	constructor(
 		keys: SignalKeyStoreWithTransaction,
 		logger: ILogger,
-		pnToLIDFunc?: (jids: string[]) => Promise<LIDMapping[] | undefined>
+		pnToLIDFunc?: (jids: string[]) => Promise<LIDMapping[] | undefined>,
+		onLifecycle?: (event: LIDMappingLifecycleEvent) => void
 	) {
 		this.keys = keys
 		this.pnToLIDFunc = pnToLIDFunc
 		this.logger = logger
+		this.onLifecycle = onLifecycle
 	}
 
 	private getDeviceSpecificLIDForPN(
@@ -50,7 +58,7 @@ export class LIDMappingStore {
 		return `${lidUser}${pnDevice ? `:${pnDevice}` : ''}@${lidServer}`
 	}
 
-	async storeLIDPNMappings(pairs: LIDMapping[]): Promise<void> {
+	async storeLIDPNMappings(pairs: LIDMapping[], source: LIDMappingWriteSource = 'OBSERVED'): Promise<void> {
 		if (pairs.length === 0) return
 
 		const validatedPairs: Array<{ pnUser: string; lidUser: string }> = []
@@ -129,7 +137,55 @@ export class LIDMappingStore {
 			this.mappingCache.set(`pn:${pnUser}`, lidUser)
 			this.mappingCache.set(`lid:${lidUser}`, pnUser)
 			this.missingPNMappingCache.delete(pnUser)
+			const previousLid = existingMappings.get(pnUser)
+			if (source === 'USYNC_REFRESH') {
+				this.onLifecycle?.({
+					action: 'REFRESHED',
+					mapping: { pn: `${pnUser}@s.whatsapp.net`, lid: `${lidUser}@lid` },
+					...(previousLid ? { previousLid: `${previousLid}@lid` } : {})
+				})
+			} else if (source === 'MIGRATION_SYNC') {
+				this.onLifecycle?.({
+					action: 'MIGRATED',
+					mapping: { pn: `${pnUser}@s.whatsapp.net`, lid: `${lidUser}@lid` },
+					...(previousLid ? { previousLid: `${previousLid}@lid` } : {})
+				})
+			}
 		}
+	}
+
+	async invalidateLIDPNMappings(pairs: LIDMapping[]): Promise<number> {
+		const updates: Record<string, string | null> = {}
+		const invalidated: LIDMapping[] = []
+		for (const { pn, lid } of pairs) {
+			if (!isPnUser(pn) || !isLidUser(lid)) continue
+			const pnUser = jidDecode(pn)?.user
+			const lidUser = jidDecode(lid)?.user
+			if (!pnUser || !lidUser) continue
+			const stored = await this.keys.get('lid-mapping', [pnUser, `${lidUser}_reverse`])
+			if (stored[pnUser] !== lidUser || stored[`${lidUser}_reverse`] !== pnUser) continue
+
+			updates[pnUser] = null
+			updates[`${lidUser}_reverse`] = null
+			invalidated.push({ pn: `${pnUser}@s.whatsapp.net`, lid: `${lidUser}@lid` })
+		}
+
+		if (!invalidated.length) return 0
+		await this.keys.transaction(async () => {
+			await this.keys.set({ 'lid-mapping': updates })
+		}, 'lid-mapping-invalidation')
+
+		for (const mapping of invalidated) {
+			const pnUser = jidDecode(mapping.pn)?.user
+			const lidUser = jidDecode(mapping.lid)?.user
+			if (!pnUser || !lidUser) continue
+			this.mappingCache.delete(`pn:${pnUser}`)
+			this.mappingCache.delete(`lid:${lidUser}`)
+			this.missingPNMappingCache.delete(pnUser)
+			this.onLifecycle?.({ action: 'INVALIDATED', mapping })
+		}
+
+		return invalidated.length
 	}
 
 	async getLIDForPN(pn: string): Promise<string | null> {
@@ -298,7 +354,7 @@ export class LIDMappingStore {
 		if (Object.keys(usyncFetch).length > 0) {
 			const result = await this.pnToLIDFunc?.(Object.keys(usyncFetch)) // this function already adds LIDs to mapping
 			if (result && result.length > 0) {
-				await this.storeLIDPNMappings(result)
+				await this.storeLIDPNMappings(result, 'USYNC_REFRESH')
 				for (const pair of result) {
 					const pnDecoded = jidDecode(pair.pn)
 					const pnUser = pnDecoded?.user
@@ -428,5 +484,6 @@ export class LIDMappingStore {
 	close(): void {
 		this.mappingCache.clear()
 		this.missingPNMappingCache.clear()
+		this.onLifecycle = undefined
 	}
 }

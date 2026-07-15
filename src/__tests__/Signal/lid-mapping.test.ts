@@ -18,11 +18,12 @@ const logger = P({ level: 'silent' })
 
 describe('LIDMappingStore', () => {
 	const mockPnToLIDFunc = jest.fn<(jids: string[]) => Promise<LIDMapping[] | undefined>>()
+	const onLifecycle = jest.fn()
 	let lidMappingStore: LIDMappingStore
 
 	beforeEach(() => {
 		jest.clearAllMocks()
-		lidMappingStore = new LIDMappingStore(mockKeys, logger, mockPnToLIDFunc)
+		lidMappingStore = new LIDMappingStore(mockKeys, logger, mockPnToLIDFunc, onLifecycle)
 	})
 
 	describe('getPNForLID', () => {
@@ -82,6 +83,76 @@ describe('LIDMappingStore', () => {
 
 			expect(result).toBe('5511999999999:2@s.whatsapp.net')
 			expect(mockPnToLIDFunc).not.toHaveBeenCalled()
+		})
+	})
+
+	describe('mapping lifecycle hooks', () => {
+		it('emits a typed refresh after the mapping is durably stored', async () => {
+			mockLidMappingGet.mockResolvedValue({})
+
+			await lidMappingStore.storeLIDPNMappings(
+				[{ pn: '5511999999999@s.whatsapp.net', lid: '123456789012345@lid' }],
+				'USYNC_REFRESH'
+			)
+
+			expect(mockKeys.set).toHaveBeenCalledWith({
+				'lid-mapping': {
+					'5511999999999': '123456789012345',
+					'123456789012345_reverse': '5511999999999'
+				}
+			})
+			expect(onLifecycle).toHaveBeenCalledWith({
+				action: 'REFRESHED',
+				mapping: { pn: '5511999999999@s.whatsapp.net', lid: '123456789012345@lid' }
+			})
+		})
+
+		it('includes the previous alias for a migration sync replacement', async () => {
+			mockLidMappingGet.mockResolvedValue({ '5511999999999': '123456789012345' })
+
+			await lidMappingStore.storeLIDPNMappings(
+				[{ pn: '5511999999999@s.whatsapp.net', lid: '223456789012345@lid' }],
+				'MIGRATION_SYNC'
+			)
+
+			expect(onLifecycle).toHaveBeenCalledWith({
+				action: 'MIGRATED',
+				mapping: { pn: '5511999999999@s.whatsapp.net', lid: '223456789012345@lid' },
+				previousLid: '123456789012345@lid'
+			})
+		})
+
+		it('invalidates only an exact persisted pair and emits after the transaction', async () => {
+			mockLidMappingGet.mockResolvedValue({
+				'5511999999999': '123456789012345',
+				'123456789012345_reverse': '5511999999999'
+			})
+
+			await expect(
+				lidMappingStore.invalidateLIDPNMappings([{ pn: '5511999999999@s.whatsapp.net', lid: '123456789012345@lid' }])
+			).resolves.toBe(1)
+			expect(mockKeys.set).toHaveBeenCalledWith({
+				'lid-mapping': {
+					'5511999999999': null,
+					'123456789012345_reverse': null
+				}
+			})
+			expect(onLifecycle).toHaveBeenCalledWith({
+				action: 'INVALIDATED',
+				mapping: { pn: '5511999999999@s.whatsapp.net', lid: '123456789012345@lid' }
+			})
+		})
+
+		it('cleans up the lifecycle hook when the repository closes', async () => {
+			mockLidMappingGet.mockResolvedValue({})
+			lidMappingStore.close()
+
+			await lidMappingStore.storeLIDPNMappings(
+				[{ pn: '5511999999999@s.whatsapp.net', lid: '123456789012345@lid' }],
+				'USYNC_REFRESH'
+			)
+
+			expect(onLifecycle).not.toHaveBeenCalled()
 		})
 	})
 })

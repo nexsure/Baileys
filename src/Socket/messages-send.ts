@@ -68,10 +68,10 @@ import {
 	S_WHATSAPP_NET
 } from '../WABinary'
 import { USyncQuery, USyncUser } from '../WAUSync'
-import { resolveMessageSendJid } from './message-send-jid'
+import { selectMessageSendJid } from './message-send-jid'
 import { makeNewsletterSocket } from './newsletter'
 
-export { resolveMessageSendJid } from './message-send-jid'
+export { resolveMessageSendJid, selectMessageSendJid } from './message-send-jid'
 
 export const makeMessagesSocket = (config: SocketConfig) => {
 	const {
@@ -1350,9 +1350,7 @@ export const makeMessagesSocket = (config: SocketConfig) => {
 			} else {
 				const adaptiveAddressingEnabled =
 					shouldUsePnToLidAdaptiveAddressing?.() ?? enablePnToLidAdaptiveAddressing ?? false
-				const resolvedJid = adaptiveAddressingEnabled
-					? await resolveMessageSendJid(jid, getStoredLIDForPN, logger)
-					: { jid }
+				const resolvedJid = await selectMessageSendJid(jid, adaptiveAddressingEnabled, getStoredLIDForPN, logger)
 				const fullMsg = await generateWAMessage(resolvedJid.jid, content, {
 					logger,
 					userJid,

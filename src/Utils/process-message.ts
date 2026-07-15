@@ -552,7 +552,7 @@ const processMessage = async (
 					pairs.push({ lid: `${lid}@lid`, pn: `${pn}@s.whatsapp.net` })
 				}
 
-				await signalRepository.lidMapping.storeLIDPNMappings(pairs)
+				await signalRepository.lidMapping.storeLIDPNMappings(pairs, 'MIGRATION_SYNC')
 				if (pairs.length) {
 					for (const { pn, lid } of pairs) {
 						await signalRepository.migrateSession(pn, lid)

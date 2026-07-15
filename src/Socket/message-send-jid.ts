@@ -16,6 +16,14 @@ export type MessageSendJid = {
 	additionalAttributes?: BinaryNodeAttributes
 }
 
+export const selectMessageSendJid = async (
+	jid: string,
+	adaptiveAddressingEnabled: boolean,
+	getStoredLIDForPN: (pn: string) => Promise<string | null>,
+	logger?: ILogger
+): Promise<MessageSendJid> =>
+	adaptiveAddressingEnabled ? resolveMessageSendJid(jid, getStoredLIDForPN, logger) : { jid }
+
 export const resolveMessageSendJid = async (
 	jid: string,
 	getStoredLIDForPN: (pn: string) => Promise<string | null>,

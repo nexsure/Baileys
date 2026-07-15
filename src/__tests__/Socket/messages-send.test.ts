@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals'
-import { resolveMessageSendJid } from '../../Socket/message-send-jid'
+import { resolveMessageSendJid, selectMessageSendJid } from '../../Socket/message-send-jid'
 
 describe('resolveMessageSendJid', () => {
 	it('routes a warm PN to its locally mapped LID with alternate PN stanza metadata', async () => {
@@ -65,5 +65,44 @@ describe('resolveMessageSendJid', () => {
 		await expect(resolveMessageSendJid('12345@s.whatsapp.net', getStoredLIDForPN)).resolves.toEqual({
 			jid: '12345@s.whatsapp.net'
 		})
+	})
+
+	it('returns to the exact PN stanza after the active mapping is invalidated', async () => {
+		let storedLid: string | null = '98765@lid'
+		const getStoredLIDForPN = jest.fn(async (): Promise<string | null> => storedLid)
+
+		await expect(resolveMessageSendJid('12345@s.whatsapp.net', getStoredLIDForPN)).resolves.toEqual({
+			jid: '98765@lid',
+			remoteJidAlt: '12345@s.whatsapp.net',
+			addressingMode: 'lid',
+			additionalAttributes: {
+				addressing_mode: 'lid',
+				recipient_pn: '12345@s.whatsapp.net'
+			}
+		})
+
+		storedLid = null
+		await expect(resolveMessageSendJid('12345@s.whatsapp.net', getStoredLIDForPN)).resolves.toEqual({
+			jid: '12345@s.whatsapp.net'
+		})
+	})
+
+	it('keeps retry stanza/session addressing deterministic while the mapping remains trusted', async () => {
+		const getStoredLIDForPN = jest.fn(async (): Promise<string | null> => '98765@lid')
+
+		const first = await resolveMessageSendJid('12345@s.whatsapp.net', getStoredLIDForPN)
+		const retry = await resolveMessageSendJid('12345@s.whatsapp.net', getStoredLIDForPN)
+
+		expect(retry).toEqual(first)
+		expect(getStoredLIDForPN).toHaveBeenCalledTimes(2)
+	})
+
+	it('bypasses the mapping store and emits the exact PN stanza when the feature is disabled', async () => {
+		const getStoredLIDForPN = jest.fn(async (): Promise<string | null> => '98765@lid')
+
+		await expect(selectMessageSendJid('12345@s.whatsapp.net', false, getStoredLIDForPN)).resolves.toEqual({
+			jid: '12345@s.whatsapp.net'
+		})
+		expect(getStoredLIDForPN).not.toHaveBeenCalled()
 	})
 })

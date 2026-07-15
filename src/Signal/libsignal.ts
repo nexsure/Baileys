@@ -3,7 +3,7 @@ import * as libsignal from 'libsignal'
 // @ts-ignore
 import { PreKeyWhisperMessage } from 'libsignal/src/protobufs'
 import { LRUCache } from 'lru-cache'
-import type { LIDMapping, SignalAuthState, SignalKeyStoreWithTransaction } from '../Types'
+import type { LIDMapping, LIDMappingLifecycleEvent, SignalAuthState, SignalKeyStoreWithTransaction } from '../Types'
 import type { SignalRepositoryWithLIDStore } from '../Types/Signal'
 import { generateSignalPubKey } from '../Utils'
 import type { ILogger } from '../Utils/logger'
@@ -50,9 +50,15 @@ function extractIdentityFromPkmsg(ciphertext: Uint8Array): Uint8Array | undefine
 export function makeLibSignalRepository(
 	auth: SignalAuthState,
 	logger: ILogger,
-	pnToLIDFunc?: (jids: string[]) => Promise<LIDMapping[] | undefined>
+	pnToLIDFunc?: (jids: string[]) => Promise<LIDMapping[] | undefined>,
+	onLIDMappingLifecycle?: (event: LIDMappingLifecycleEvent) => void
 ): SignalRepositoryWithLIDStore {
-	const lidMapping = new LIDMappingStore(auth.keys as SignalKeyStoreWithTransaction, logger, pnToLIDFunc)
+	const lidMapping = new LIDMappingStore(
+		auth.keys as SignalKeyStoreWithTransaction,
+		logger,
+		pnToLIDFunc,
+		onLIDMappingLifecycle
+	)
 	const storage = signalStorage(auth, lidMapping)
 
 	const parsedKeys = auth.keys as SignalKeyStoreWithTransaction
