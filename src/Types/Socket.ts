@@ -110,6 +110,12 @@ export type SocketConfig = {
 	enableRecentMessageCache: boolean
 
 	/**
+	 * Route one-to-one PN sends to a trusted locally stored LID while preserving PN
+	 * alternate-addressing metadata. Disabled by default for staged rollout.
+	 */
+	enablePnToLidAdaptiveAddressing?: boolean
+
+	/**
 	 * Returns if a jid should be ignored,
 	 * no event for that jid will be triggered.
 	 * Messages from that jid will also not be decrypted
